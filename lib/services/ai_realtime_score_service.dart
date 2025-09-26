@@ -27,63 +27,69 @@ class ScoreGenerationProgress {
 
 class AIRealtimeScoreService {
   static AIRealtimeScoreService? _instance;
-  static AIRealtimeScoreService get instance => _instance ??= AIRealtimeScoreService._();
+  static AIRealtimeScoreService get instance =>
+      _instance ??= AIRealtimeScoreService._();
   AIRealtimeScoreService._();
 
   final StreamController<ScoreGenerationProgress> _progressController =
       StreamController<ScoreGenerationProgress>.broadcast();
 
   // Stream público para observar o progresso
-  Stream<ScoreGenerationProgress> get progressStream => _progressController.stream;
-
+  Stream<ScoreGenerationProgress> get progressStream =>
+      _progressController.stream;
 
   /// Inicia geração de partitura em tempo real com streaming de progresso
   Future<String?> generateRealtimeScore(String prompt) async {
-
     try {
       // Passo 1: Preparação
-      _emitProgress(ScoreGenerationState.generating, 'Inicializando geração...', 0.1);
+      _emitProgress(
+          ScoreGenerationState.generating, 'Inicializando geração...', 0.1);
       await Future.delayed(const Duration(milliseconds: 500));
 
       // Passo 2: Análise do prompt
-      _emitProgress(ScoreGenerationState.generating, 'Analisando comando musical...', 0.2);
+      _emitProgress(ScoreGenerationState.generating,
+          'Analisando comando musical...', 0.2);
       final analyzedPrompt = await _analyzePrompt(prompt);
       await Future.delayed(const Duration(milliseconds: 300));
 
       // Passo 3: Geração progressiva do MusicXML
-      _emitProgress(ScoreGenerationState.generating, 'Gerando estrutura musical...', 0.3);
+      _emitProgress(
+          ScoreGenerationState.generating, 'Gerando estrutura musical...', 0.3);
       final musicXML = await _generateProgressiveMusicXML(analyzedPrompt);
 
       if (musicXML == null) {
-        _emitProgress(ScoreGenerationState.error, 'Falha ao gerar MusicXML', 1.0,
-                     errorMessage: 'Não foi possível gerar a partitura');
+        _emitProgress(
+            ScoreGenerationState.error, 'Falha ao gerar MusicXML', 1.0,
+            errorMessage: 'Não foi possível gerar a partitura');
         return null;
       }
 
       // Passo 4: Renderização com Verovio
-      _emitProgress(ScoreGenerationState.rendering, 'Renderizando partitura...', 0.8);
+      _emitProgress(
+          ScoreGenerationState.rendering, 'Renderizando partitura...', 0.8);
       await VerovioService.instance.initialize();
 
       final svg = await VerovioService.instance.renderMusicXML(
         musicXML,
-        cacheKey: 'ai_generated_${DateTime.now().millisecondsSinceEpoch}'
+        cacheKey: 'ai_generated_${DateTime.now().millisecondsSinceEpoch}',
+        zoomLevel: 1.0, // <-- CORREÇÃO APLICADA AQUI
       );
 
       if (svg == null) {
         _emitProgress(ScoreGenerationState.error, 'Falha na renderização', 1.0,
-                     errorMessage: 'Não foi possível renderizar a partitura');
+            errorMessage: 'Não foi possível renderizar a partitura');
         return null;
       }
 
       // Passo 5: Finalização
-      _emitProgress(ScoreGenerationState.completed, 'Partitura criada com sucesso!', 1.0,
-                   partialMusicXML: musicXML, currentSVG: svg);
+      _emitProgress(
+          ScoreGenerationState.completed, 'Partitura criada com sucesso!', 1.0,
+          partialMusicXML: musicXML, currentSVG: svg);
 
       return musicXML;
-
     } catch (e) {
       _emitProgress(ScoreGenerationState.error, 'Erro na geração', 1.0,
-                   errorMessage: e.toString());
+          errorMessage: e.toString());
       return null;
     }
   }
@@ -106,23 +112,28 @@ class AIRealtimeScoreService {
   }
 
   /// Gera MusicXML progressivamente simulando escrita em tempo real
-  Future<String?> _generateProgressiveMusicXML(Map<String, dynamic> analysis) async {
+  Future<String?> _generateProgressiveMusicXML(
+      Map<String, dynamic> analysis) async {
     try {
       // Simular geração progressiva mostrando construção da partitura
 
       // Estrutura básica primeiro
-      _emitProgress(ScoreGenerationState.generating, 'Criando estrutura base...', 0.4);
+      _emitProgress(
+          ScoreGenerationState.generating, 'Criando estrutura base...', 0.4);
       await Future.delayed(const Duration(milliseconds: 400));
 
       // Adicionar clave e fórmula de compasso
-      _emitProgress(ScoreGenerationState.generating, 'Definindo clave e compasso...', 0.5);
+      _emitProgress(ScoreGenerationState.generating,
+          'Definindo clave e compasso...', 0.5);
       await Future.delayed(const Duration(milliseconds: 300));
 
       // Adicionar notas progressivamente
-      _emitProgress(ScoreGenerationState.generating, 'Compondo melodia...', 0.6);
+      _emitProgress(
+          ScoreGenerationState.generating, 'Compondo melodia...', 0.6);
       await Future.delayed(const Duration(milliseconds: 500));
 
-      _emitProgress(ScoreGenerationState.generating, 'Adicionando harmonia...', 0.7);
+      _emitProgress(
+          ScoreGenerationState.generating, 'Adicionando harmonia...', 0.7);
       await Future.delayed(const Duration(milliseconds: 400));
 
       // Gerar o MusicXML final baseado na análise
@@ -205,10 +216,14 @@ ${_generateNotesXML(notes)}
 
       // Tempos nomeados
       switch (match.group(0)) {
-        case 'adagio': return 60;
-        case 'andante': return 90;
-        case 'allegro': return 140;
-        case 'presto': return 180;
+        case 'adagio':
+          return 60;
+        case 'andante':
+          return 90;
+        case 'allegro':
+          return 140;
+        case 'presto':
+          return 180;
       }
     }
     return 120;
@@ -227,7 +242,8 @@ ${_generateNotesXML(notes)}
   }
 
   String _extractScale(String prompt) {
-    if (prompt.toLowerCase().contains('menor') || prompt.toLowerCase().contains('minor')) {
+    if (prompt.toLowerCase().contains('menor') ||
+        prompt.toLowerCase().contains('minor')) {
       return 'minor';
     }
     return 'major';
@@ -251,9 +267,11 @@ ${_generateNotesXML(notes)}
   }
 
   String _extractComplexity(String prompt) {
-    if (prompt.toLowerCase().contains('simples') || prompt.toLowerCase().contains('básico')) {
+    if (prompt.toLowerCase().contains('simples') ||
+        prompt.toLowerCase().contains('básico')) {
       return 'simple';
-    } else if (prompt.toLowerCase().contains('complexo') || prompt.toLowerCase().contains('avançado')) {
+    } else if (prompt.toLowerCase().contains('complexo') ||
+        prompt.toLowerCase().contains('avançado')) {
       return 'complex';
     }
     return 'intermediate';
@@ -282,7 +300,8 @@ ${_generateNotesXML(notes)}
   String _generateNotesXML(List<String> notes) {
     String xml = '';
 
-    for (final note in notes.take(4)) { // Apenas 4 notas para caber no 4/4
+    for (final note in notes.take(4)) {
+      // Apenas 4 notas para caber no 4/4
       xml += '''
       <note>
         <pitch>
@@ -301,15 +320,23 @@ ${_generateNotesXML(notes)}
   int _getKeyFifths(String key) {
     // Círculo das quintas simplificado
     final fifths = {
-      'C': 0, 'G': 1, 'D': 2, 'A': 3, 'E': 4, 'B': 5,
-      'F': -1, 'Bb': -2, 'Eb': -3, 'Ab': -4, 'Db': -5
+      'C': 0,
+      'G': 1,
+      'D': 2,
+      'A': 3,
+      'E': 4,
+      'B': 5,
+      'F': -1,
+      'Bb': -2,
+      'Eb': -3,
+      'Ab': -4,
+      'Db': -5
     };
     return fifths[key] ?? 0;
   }
 
   void _emitProgress(ScoreGenerationState state, String step, double progress,
-                    {String? partialMusicXML, String? currentSVG, String? errorMessage}) {
-
+      {String? partialMusicXML, String? currentSVG, String? errorMessage}) {
     final progressData = ScoreGenerationProgress(
       state: state,
       currentStep: step,

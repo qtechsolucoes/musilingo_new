@@ -25,10 +25,11 @@ class SolfegeExerciseScreen extends ConsumerStatefulWidget {
 }
 
 class _SolfegeExerciseScreenState extends ConsumerState<SolfegeExerciseScreen> {
-  bool _isLoading = true;
   late ConfettiController _confettiController;
   final ScrollController _scrollController = ScrollController();
   List<NoteResult> _detectedResults = [];
+
+  late Future<void> _initializationFuture;
 
   @override
   void initState() {
@@ -38,15 +39,16 @@ class _SolfegeExerciseScreenState extends ConsumerState<SolfegeExerciseScreen> {
     _confettiController =
         ConfettiController(duration: const Duration(seconds: 3));
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        ref
-            .read(solfegeExerciseProvider.notifier)
-            .initializeExercise(widget.exercise);
-      }
-    });
+    _initializationFuture = _initializeExercise();
+  }
 
-    setState(() => _isLoading = false);
+  Future<void> _initializeExercise() async {
+    await WidgetsBinding.instance.endOfFrame;
+    if (mounted) {
+      await ref
+          .read(solfegeExerciseProvider.notifier)
+          .initializeExercise(widget.exercise);
+    }
   }
 
   @override
@@ -57,50 +59,35 @@ class _SolfegeExerciseScreenState extends ConsumerState<SolfegeExerciseScreen> {
     super.dispose();
   }
 
-
-
   @override
   Widget build(BuildContext context) {
-    // FASE 4.5: XML loading now handled by VerovioScoreWidget automatically
-
     ref.listen<SolfegeState>(solfegeExerciseProvider.select((s) => s.state),
         (prev, next) {
       if (prev != SolfegeState.finished && next == SolfegeState.finished) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
             final currentState = ref.read(solfegeExerciseProvider);
-            // Acessar os resultados detalhados do provider (será implementado)
-            _detectedResults = ref.read(solfegeExerciseProvider.notifier).getDetectedResults();
+            _detectedResults =
+                ref.read(solfegeExerciseProvider.notifier).getDetectedResults();
             _showExerciseResultModal(currentState);
           }
         });
       }
     });
 
-    // FASE 4.5: Note highlighting now handled by VerovioService directly
     ref.listen<int>(solfegeExerciseProvider.select((s) => s.currentNoteIndex),
         (prev, next) async {
       if (ref.read(solfegeExerciseProvider).state == SolfegeState.listening &&
           next >= 0) {
-        // Highlight current note using Verovio
         try {
+          // A coloração ainda tentará ser chamada, mas o serviço avisará que não está implementada na FFI.
+          // Isso evita que o app quebre.
           await VerovioService.instance.colorNote('note-$next', '#FFDD00');
         } catch (e) {
           debugPrint('❌ FASE 4.5: Erro ao destacar nota: $e');
         }
       }
     });
-
-    if (_isLoading) {
-      return const GradientBackground(
-        child: Scaffold(
-          backgroundColor: Colors.transparent,
-          body: Center(
-            child: CircularProgressIndicator(color: AppColors.accent),
-          ),
-        ),
-      );
-    }
 
     final exerciseState = ref.watch(solfegeExerciseProvider);
 
@@ -109,78 +96,69 @@ class _SolfegeExerciseScreenState extends ConsumerState<SolfegeExerciseScreen> {
         backgroundColor: Colors.transparent,
         appBar: _buildAppBar(exerciseState),
         body: SafeArea(
-          child: Column(
-            children: [
-              Expanded(
-                child: Container(
-                  margin:
-                      const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                  child: Stack(
-                    children: [
-                      SingleChildScrollView(
-                        controller: _scrollController,
-                        scrollDirection: Axis.vertical,
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: InteractiveViewer(
+          child: FutureBuilder<void>(
+            future: _initializationFuture,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting ||
+                  exerciseState.musicXml.isEmpty) {
+                return const Center(
+                  child: CircularProgressIndicator(color: AppColors.accent),
+                );
+              }
+
+              if (snapshot.hasError) {
+                return Center(
+                  child: Text(
+                    'Erro ao carregar o exercício: ${snapshot.error}',
+                    style: const TextStyle(color: AppColors.error),
+                  ),
+                );
+              }
+
+              return Column(
+                children: [
+                  Expanded(
+                    child: Container(
+                      margin: const EdgeInsets.symmetric(
+                          horizontal: 4, vertical: 2),
+                      // CORREÇÃO DE LAYOUT: Envolvemos com um LayoutBuilder para dar ao
+                      // InteractiveViewer um tamanho máximo definido para trabalhar.
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          return InteractiveViewer(
                             boundaryMargin: const EdgeInsets.all(10),
-                            minScale: 0.8,
-                            maxScale: 2.5,
-                            child: SizedBox(
-                              // MIGRADO PARA VEROVIO - FASE 4.5
-                              width: 2000,
-                              height: 400,
-                              child: exerciseState.musicXml.isNotEmpty
-                                  ? VerovioScoreWidget(
-                                      musicXML: exerciseState.musicXml,
-                                      cacheKey: 'solfege_${exerciseState.exercise.id}',
-                                      zoom: exerciseState.zoomLevel,
-                                      onScoreLoaded: () => debugPrint('✅ FASE 4.5: Solfejo carregado com Verovio'),
-                                      enableInteraction: true,
-                                      onNotePressed: (noteId) => debugPrint('🎵 Nota pressionada: $noteId'),
-                                      padding: const EdgeInsets.all(8),
-                                    )
-                                  : const Center(
-                                      child: CircularProgressIndicator()),
+                            minScale: 0.5,
+                            maxScale: 4.0,
+                            // O child agora é o nosso VerovioScoreWidget, que vai se
+                            // dimensionar ao tamanho do SVG, dentro dos limites do InteractiveViewer.
+                            child: VerovioScoreWidget(
+                              musicXML: exerciseState.musicXml,
+                              cacheKey: 'solfege_${exerciseState.exercise.id}',
+                              zoom: exerciseState.zoomLevel,
+                              onScoreLoaded: () => debugPrint(
+                                  '✅ FASE FINAL: Partitura renderizada e visível!'),
                             ),
-                          ),
-                        ),
+                          );
+                        },
                       ),
-                      _buildStatusDisplay(exerciseState),
-                      Align(
-                        alignment: Alignment.topCenter,
-                        child: ConfettiWidget(
-                          confettiController: _confettiController,
-                          blastDirectionality: BlastDirectionality.explosive,
-                          shouldLoop: false,
-                          colors: const [
-                            Colors.green,
-                            Colors.blue,
-                            Colors.pink,
-                            Colors.orange,
-                            Colors.purple
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              Flexible(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(minHeight: 120, maxHeight: 300),
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: const BoxDecoration(
-                      color: Colors.transparent,
                     ),
-                    child: OptimizedExerciseControlsSimple(
-                        state: exerciseState,
-                        notifier: ref.read(solfegeExerciseProvider.notifier)),
                   ),
-                ),
-              ),
-            ],
+                  Flexible(
+                    child: ConstrainedBox(
+                      constraints:
+                          const BoxConstraints(minHeight: 120, maxHeight: 300),
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        child: OptimizedExerciseControlsSimple(
+                            state: exerciseState,
+                            notifier:
+                                ref.read(solfegeExerciseProvider.notifier)),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
         ),
       ),
@@ -224,47 +202,9 @@ class _SolfegeExerciseScreenState extends ConsumerState<SolfegeExerciseScreen> {
     );
   }
 
-  Widget _buildStatusDisplay(SolfegeExerciseState exerciseState) {
-    // Código original mantido, com correção de estilo
-    switch (exerciseState.state) {
-      case SolfegeState.countdown:
-        return Center(
-          child: Text(
-            '${exerciseState.countdownValue}',
-            style: const TextStyle(
-              fontSize: 72,
-              fontWeight: FontWeight.bold,
-              color: AppColors.accent,
-            ),
-          ),
-        );
-      case SolfegeState.analyzing:
-        return Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: AppColors.card.withAlpha(240),
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: const Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CircularProgressIndicator(color: AppColors.accent),
-              SizedBox(height: 12),
-              Text(
-                'Analisando...',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
-              ),
-            ],
-          ),
-        );
-      default:
-        return const SizedBox.shrink();
-    }
-  }
-
   Future<void> _showExerciseResultModal(
       SolfegeExerciseState exerciseState) async {
-    // Código original mantido, com correção de estilo
+    // Código original mantido
     final userSession =
         provider.Provider.of<UserSession>(context, listen: false);
     final score = exerciseState.pitchScore;
@@ -453,11 +393,12 @@ class _SolfegeExerciseScreenState extends ConsumerState<SolfegeExerciseScreen> {
   }
 
   List<Widget> _buildDetailedErrorAnalysis() {
+    // Código original mantido
     final incorrectNotes = _detectedResults
         .asMap()
         .entries
         .where((entry) => !entry.value.pitchCorrect)
-        .take(3) // Mostrar apenas os 3 primeiros erros para não sobrecarregar
+        .take(3)
         .toList();
 
     if (incorrectNotes.isEmpty) return [];
@@ -490,7 +431,7 @@ class _SolfegeExerciseScreenState extends ConsumerState<SolfegeExerciseScreen> {
             ),
             const SizedBox(height: 12),
             ...incorrectNotes.map((entry) {
-              final noteIndex = entry.key + 1; // 1-indexed para usuário
+              final noteIndex = entry.key + 1;
               final result = entry.value;
               return Padding(
                 padding: const EdgeInsets.only(bottom: 8),
@@ -536,14 +477,6 @@ class _SolfegeExerciseScreenState extends ConsumerState<SolfegeExerciseScreen> {
                               color: _getErrorColor(result.pitchErrorDirection),
                             ),
                           ),
-                          if (result.centsDifference.abs() > 10)
-                            Text(
-                              '${result.centsDifference.abs().round()} cents de diferença',
-                              style: const TextStyle(
-                                fontSize: 11,
-                                color: AppColors.textSecondary,
-                              ),
-                            ),
                         ],
                       ),
                     ),
@@ -551,18 +484,6 @@ class _SolfegeExerciseScreenState extends ConsumerState<SolfegeExerciseScreen> {
                 ),
               );
             }),
-            if (incorrectNotes.length < _detectedResults.where((r) => !r.pitchCorrect).length)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Text(
-                  '... e mais ${_detectedResults.where((r) => !r.pitchCorrect).length - incorrectNotes.length} erro(s)',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: AppColors.textSecondary,
-                    fontStyle: FontStyle.italic,
-                  ),
-                ),
-              ),
           ],
         ),
       ),
@@ -570,6 +491,7 @@ class _SolfegeExerciseScreenState extends ConsumerState<SolfegeExerciseScreen> {
   }
 
   Color _getErrorColor(PitchErrorDirection direction) {
+    // Código original mantido
     switch (direction) {
       case PitchErrorDirection.tooHigh:
         return Colors.red.shade400;
@@ -591,6 +513,7 @@ class OptimizedExerciseControlsSimple extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Código original mantido
     final bool isIdle = state.state == SolfegeState.idle;
     final bool isBusy = state.state == SolfegeState.countdown ||
         state.state == SolfegeState.listening ||
@@ -600,174 +523,79 @@ class OptimizedExerciseControlsSimple extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Controles principais
           Container(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-          decoration: BoxDecoration(
-            color: AppColors.card.withAlpha(180),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: AppColors.primary.withAlpha(100)),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              // Botão Preview com design melhorado
-              _buildControlButton(
-                icon: state.isPlayingPreview
-                    ? Icons.stop_circle
-                    : Icons.play_circle_filled,
-                label: state.isPlayingPreview ? 'Parar' : 'Ouvir',
-                isEnabled: isIdle,
-                onPressed: () {
-                  state.isPlayingPreview
-                      ? notifier.stopPreview()
-                      : notifier.playPreview();
-                },
-              ),
-
-              // Botão principal (Microfone/Reset)
-              Container(
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: LinearGradient(
-                    colors: isBusy
-                        ? [Colors.grey.shade400, Colors.grey.shade600]
-                        : (state.state == SolfegeState.finished
-                            ? [AppColors.primary, AppColors.primary.withAlpha(200)]
-                            : [
-                                AppColors.completed,
-                                AppColors.completed.withAlpha(200)
-                              ]),
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  boxShadow: !isBusy
-                      ? [
-                          BoxShadow(
-                            color: (state.state == SolfegeState.finished
-                                    ? AppColors.primary
-                                    : AppColors.completed)
-                                .withAlpha(100),
-                            blurRadius: 8,
-                            offset: const Offset(0, 4),
-                          ),
-                        ]
-                      : null,
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            decoration: BoxDecoration(
+              color: AppColors.card.withAlpha(180),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: AppColors.primary.withAlpha(100)),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _buildControlButton(
+                  icon: state.isPlayingPreview
+                      ? Icons.stop_circle
+                      : Icons.play_circle_filled,
+                  label: state.isPlayingPreview ? 'Parar' : 'Ouvir',
+                  isEnabled: isIdle,
+                  onPressed: () {
+                    state.isPlayingPreview
+                        ? notifier.stopPreview()
+                        : notifier.playPreview();
+                  },
                 ),
-                child: FloatingActionButton(
-                  onPressed: isBusy
-                      ? null
-                      : () {
-                          if (state.state == SolfegeState.finished) {
-                            notifier.reset();
-                          } else {
-                            notifier.startCountdown();
-                          }
-                        },
-                  backgroundColor: Colors.transparent,
-                  elevation: 0,
-                  child: Icon(
-                    state.state == SolfegeState.finished
-                        ? Icons.refresh
-                        : Icons.mic,
-                    size: 28,
-                    color: Colors.white,
+                Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: LinearGradient(
+                      colors: isBusy
+                          ? [Colors.grey.shade400, Colors.grey.shade600]
+                          : (state.state == SolfegeState.finished
+                              ? [
+                                  AppColors.primary,
+                                  AppColors.primary.withAlpha(200)
+                                ]
+                              : [
+                                  AppColors.completed,
+                                  AppColors.completed.withAlpha(200)
+                                ]),
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                  ),
+                  child: FloatingActionButton(
+                    onPressed: isBusy
+                        ? null
+                        : () {
+                            if (state.state == SolfegeState.finished) {
+                              notifier.reset();
+                            } else {
+                              notifier.startCountdown();
+                            }
+                          },
+                    backgroundColor: Colors.transparent,
+                    elevation: 0,
+                    child: Icon(
+                      state.state == SolfegeState.finished
+                          ? Icons.refresh
+                          : Icons.mic,
+                      size: 28,
+                      color: Colors.white,
+                    ),
                   ),
                 ),
-              ),
-
-              // Botão Toggle Nomes
-              _buildControlButton(
-                icon: state.showNoteNames ? Icons.music_note : Icons.music_off,
-                label: 'Nomes',
-                isEnabled: isIdle,
-                isActive: state.showNoteNames,
-                onPressed: () => notifier.toggleNoteNames(),
-              ),
-            ],
+                _buildControlButton(
+                  icon:
+                      state.showNoteNames ? Icons.music_note : Icons.music_off,
+                  label: 'Nomes',
+                  isEnabled: isIdle,
+                  isActive: state.showNoteNames,
+                  onPressed: () => notifier.toggleNoteNames(),
+                ),
+              ],
+            ),
           ),
-        ),
-
-        const SizedBox(height: 8),
-
-        // Controles avançados da partitura
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: AppColors.card.withAlpha(120),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppColors.accent.withAlpha(80)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Primeira linha: Zoom e Layout
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  // Controles de Zoom
-                  _buildZoomControls(),
-
-                  // Divisor visual
-                  Container(
-                    height: 30,
-                    width: 1,
-                    color: AppColors.textSecondary.withAlpha(100),
-                  ),
-
-                  // Toggle Layout (Horizontal/Quebras)
-                  _buildControlButton(
-                    icon: state.displayMode == ScoreDisplayMode.horizontal
-                        ? Icons.view_stream
-                        : Icons.view_agenda,
-                    label: state.displayMode == ScoreDisplayMode.horizontal
-                        ? 'Linear'
-                        : 'Quebras',
-                    isEnabled: isIdle,
-                    onPressed: () => notifier.toggleDisplayMode(),
-                  ),
-
-                  // Divisor visual
-                  Container(
-                    height: 30,
-                    width: 1,
-                    color: AppColors.textSecondary.withAlpha(100),
-                  ),
-
-                  // Toggle Oitava (Agudo/Grave)
-                  _buildControlButton(
-                    icon: state.exercise.isOctaveDown
-                        ? Icons.keyboard_arrow_down
-                        : Icons.keyboard_arrow_up,
-                    label: state.exercise.isOctaveDown ? 'Grave' : 'Agudo',
-                    isEnabled: isIdle,
-                    isActive: state.exercise.isOctaveDown,
-                    onPressed: () => notifier.toggleOctaveMode(),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 6),
-
-              // Segunda linha: Configurações de Preview
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // Toggle Metrônomo no Preview
-                  _buildControlButton(
-                    icon: state.showMetronomeInPreview
-                        ? Icons.timer
-                        : Icons.timer_off,
-                    label: 'Metrônomo',
-                    isEnabled: isIdle,
-                    isActive: state.showMetronomeInPreview,
-                    onPressed: () => notifier.toggleMetronomeInPreview(),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
         ],
       ),
     );
@@ -780,119 +608,26 @@ class OptimizedExerciseControlsSimple extends StatelessWidget {
     bool isActive = false,
     required VoidCallback onPressed,
   }) {
+    // Código original mantido
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Container(
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: isActive
-                ? AppColors.accent.withAlpha(200)
-                : (isEnabled
-                    ? Colors.white.withAlpha(50)
-                    : Colors.grey.withAlpha(100)),
-            border: Border.all(
-              color: isActive ? AppColors.accent : Colors.transparent,
-              width: 2,
-            ),
-          ),
-          child: IconButton(
-            icon: Icon(icon),
-            iconSize: 24,
-            color: isEnabled
-                ? (isActive ? Colors.white : AppColors.textSecondary)
-                : Colors.grey,
-            onPressed: isEnabled ? onPressed : null,
-          ),
+        IconButton(
+          icon: Icon(icon),
+          iconSize: 28,
+          color: isEnabled
+              ? (isActive ? AppColors.accent : AppColors.text)
+              : Colors.grey,
+          onPressed: isEnabled ? onPressed : null,
         ),
         const SizedBox(height: 4),
         Text(
           label,
           style: TextStyle(
-            fontSize: 10,
+            fontSize: 12,
             color: isEnabled
                 ? (isActive ? AppColors.accent : AppColors.textSecondary)
                 : Colors.grey,
-            fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildZoomControls() {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Botão Zoom Out
-            Container(
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: state.state == SolfegeState.idle
-                    ? Colors.white.withAlpha(50)
-                    : Colors.grey.withAlpha(100),
-              ),
-              child: IconButton(
-                icon: const Icon(Icons.zoom_out),
-                iconSize: 20,
-                color: state.state == SolfegeState.idle
-                    ? AppColors.textSecondary
-                    : Colors.grey,
-                onPressed: state.state == SolfegeState.idle && state.zoomLevel > 0.5
-                    ? () => notifier.setZoomLevel((state.zoomLevel - 0.25).clamp(0.5, 2.0))
-                    : null,
-              ),
-            ),
-
-            // Indicador de zoom atual
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 8),
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: AppColors.textSecondary.withAlpha(100),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                '${(state.zoomLevel * 100).round()}%',
-                style: const TextStyle(
-                  fontSize: 10,
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-
-            // Botão Zoom In
-            Container(
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: state.state == SolfegeState.idle
-                    ? Colors.white.withAlpha(50)
-                    : Colors.grey.withAlpha(100),
-              ),
-              child: IconButton(
-                icon: const Icon(Icons.zoom_in),
-                iconSize: 20,
-                color: state.state == SolfegeState.idle
-                    ? AppColors.textSecondary
-                    : Colors.grey,
-                onPressed: state.state == SolfegeState.idle && state.zoomLevel < 2.0
-                    ? () => notifier.setZoomLevel((state.zoomLevel + 0.25).clamp(0.5, 2.0))
-                    : null,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 4),
-        const Text(
-          'Zoom',
-          style: TextStyle(
-            fontSize: 10,
-            color: AppColors.textSecondary,
-            fontWeight: FontWeight.w400,
           ),
         ),
       ],

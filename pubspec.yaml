@@ -33,7 +33,7 @@ dependencies:
   confetti: ^0.8.0
   smooth_page_indicator: ^1.2.1
   flutter_midi_pro: ^3.1.4
-  flutter_svg: ^2.2.1
+  flutter_svg: ^2.0.10+1
   drag_and_drop_lists: ^0.4.2
   image_picker: ^1.2.0
   flutter_dotenv: ^6.0.0

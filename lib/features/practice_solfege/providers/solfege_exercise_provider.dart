@@ -118,10 +118,12 @@ class SolfegeExerciseState {
       pitchScore: pitchScore ?? this.pitchScore,
       durationScore: durationScore ?? this.durationScore,
       progress: progress ?? this.progress,
-      isLoadingFromDatabase: isLoadingFromDatabase ?? this.isLoadingFromDatabase,
+      isLoadingFromDatabase:
+          isLoadingFromDatabase ?? this.isLoadingFromDatabase,
       zoomLevel: zoomLevel ?? this.zoomLevel,
       displayMode: displayMode ?? this.displayMode,
-      showMetronomeInPreview: showMetronomeInPreview ?? this.showMetronomeInPreview,
+      showMetronomeInPreview:
+          showMetronomeInPreview ?? this.showMetronomeInPreview,
     );
   }
 }
@@ -140,7 +142,8 @@ class SolfegeExerciseNotifier extends StateNotifier<SolfegeExerciseState> {
   // FASE 3.3: Removido callback WebView - agora usando VerovioService diretamente
 
   // Services
-  final SolfegeDatabaseService _databaseService = SolfegeDatabaseService.instance;
+  final SolfegeDatabaseService _databaseService =
+      SolfegeDatabaseService.instance;
 
   SolfegeExerciseNotifier()
       : super(SolfegeExerciseState(
@@ -189,10 +192,10 @@ class SolfegeExerciseNotifier extends StateNotifier<SolfegeExerciseState> {
       }
 
       // Carregar progresso do usuário
-      final progress = await _databaseService.getUserProgress(userId, exerciseId);
+      final progress =
+          await _databaseService.getUserProgress(userId, exerciseId);
 
-      initializeExercise(exercise, progress: progress);
-
+      await initializeExercise(exercise, progress: progress);
     } catch (e) {
       debugPrint('❌ Erro ao carregar exercício: $e');
       state = state.copyWith(isLoadingFromDatabase: false);
@@ -200,9 +203,13 @@ class SolfegeExerciseNotifier extends StateNotifier<SolfegeExerciseState> {
     }
   }
 
-  // Inicializar o exercício
-  void initializeExercise(SolfegeExercise exercise, {SolfegeProgress? progress}) {
-    final musicXml = _generateMusicXml(exercise: exercise); // Corrigido aqui
+  // Inicializar o exercício - AGORA ASSÍNCRONO
+  Future<void> initializeExercise(SolfegeExercise exercise,
+      {SolfegeProgress? progress}) async {
+    final musicXml = _generateMusicXml(exercise: exercise);
+
+    // Adicionado para garantir que o estado só é atualizado se o notifier ainda estiver ativo
+    if (!mounted) return;
 
     state = state.copyWith(
       exercise: exercise,
@@ -219,7 +226,8 @@ class SolfegeExerciseNotifier extends StateNotifier<SolfegeExerciseState> {
     if (state.state != SolfegeState.idle) return;
 
     // Determinar número de tempos baseado na fórmula de compasso
-    final beatsPerMeasure = int.tryParse(state.exercise.timeSignature.split('/')[0]) ?? 4;
+    final beatsPerMeasure =
+        int.tryParse(state.exercise.timeSignature.split('/')[0]) ?? 4;
 
     state = state.copyWith(
       state: SolfegeState.countdown,
@@ -290,7 +298,6 @@ class SolfegeExerciseNotifier extends StateNotifier<SolfegeExerciseState> {
 
       // Timer para controlar progresso das notas
       _startNoteTimer();
-
     } catch (e) {
       debugPrint('Erro ao inicializar análise de áudio: $e');
       _fallbackToSimulation();
@@ -301,9 +308,11 @@ class SolfegeExerciseNotifier extends StateNotifier<SolfegeExerciseState> {
   void _startMetronome() {
     final beatDurationMs = (60000 / state.exercise.tempo).round();
     int beatCount = 0;
-    final beatsPerMeasure = int.tryParse(state.exercise.timeSignature.split('/')[0]) ?? 4;
+    final beatsPerMeasure =
+        int.tryParse(state.exercise.timeSignature.split('/')[0]) ?? 4;
 
-    _metronomeTimer = Timer.periodic(Duration(milliseconds: beatDurationMs), (timer) {
+    _metronomeTimer =
+        Timer.periodic(Duration(milliseconds: beatDurationMs), (timer) {
       if (state.state != SolfegeState.listening) {
         timer.cancel();
         return;
@@ -340,20 +349,26 @@ class SolfegeExerciseNotifier extends StateNotifier<SolfegeExerciseState> {
     );
 
     final currentDuration = _currentNoteStartTime != null
-        ? DateTime.now().difference(_currentNoteStartTime!).inMilliseconds / 1000.0
+        ? DateTime.now().difference(_currentNoteStartTime!).inMilliseconds /
+            1000.0
         : 0.0;
 
-    final expectedDuration = currentNote.getDurationInSeconds(state.exercise.tempo);
-    final durationCorrect = _audioService!.checkDuration(expectedDuration, currentDuration);
+    final expectedDuration =
+        currentNote.getDurationInSeconds(state.exercise.tempo);
+    final durationCorrect =
+        _audioService!.checkDuration(expectedDuration, currentDuration);
 
-    final nameCorrect = _audioService!.checkNoteName(currentNote.lyric, audioData.detectedWord);
+    final nameCorrect =
+        _audioService!.checkNoteName(currentNote.lyric, audioData.detectedWord);
 
     // Feedback visual em tempo real - aplicar cor amarela enquanto canta
     if (audioData.frequency > 0 && audioData.amplitude > 0.01) {
-      _applyNoteColorFeedback(state.currentNoteIndex, null); // Amarelo = cantando
+      _applyNoteColorFeedback(
+          state.currentNoteIndex, null); // Amarelo = cantando
     }
 
-    debugPrint('Nota ${state.currentNoteIndex}: Pitch: $pitchCorrect, Duration: $durationCorrect, Name: $nameCorrect');
+    debugPrint(
+        'Nota ${state.currentNoteIndex}: Pitch: $pitchCorrect, Duration: $durationCorrect, Name: $nameCorrect');
   }
 
   // Controlar timer das notas
@@ -366,7 +381,8 @@ class SolfegeExerciseNotifier extends StateNotifier<SolfegeExerciseState> {
     final currentNote = state.exercise.noteSequence[state.currentNoteIndex];
     final noteDuration = _getNoteDurationInSeconds(currentNote.duration);
 
-    _noteTimer = Timer(Duration(milliseconds: (noteDuration * 1000).round()), () async {
+    _noteTimer =
+        Timer(Duration(milliseconds: (noteDuration * 1000).round()), () async {
       if (mounted && state.state == SolfegeState.listening) {
         // Salvar resultado da nota atual
         await _saveCurrentNoteResult();
@@ -401,22 +417,30 @@ class SolfegeExerciseNotifier extends StateNotifier<SolfegeExerciseState> {
             : currentNote.frequency;
 
         pitchCorrect = _audioService?.checkPitch(
-          expectedFrequency,
-          _lastAnalysisData!.frequency,
-          amplitude: _lastAnalysisData!.amplitude,
-        ) ?? false;
+              expectedFrequency,
+              _lastAnalysisData!.frequency,
+              amplitude: _lastAnalysisData!.amplitude,
+            ) ??
+            false;
 
         final currentDuration = _currentNoteStartTime != null
-            ? DateTime.now().difference(_currentNoteStartTime!).inMilliseconds / 1000.0
+            ? DateTime.now().difference(_currentNoteStartTime!).inMilliseconds /
+                1000.0
             : 0.0;
-        final expectedDuration = currentNote.getDurationInSeconds(state.exercise.tempo);
-        durationCorrect = _audioService?.checkDuration(expectedDuration, currentDuration) ?? false;
+        final expectedDuration =
+            currentNote.getDurationInSeconds(state.exercise.tempo);
+        durationCorrect =
+            _audioService?.checkDuration(expectedDuration, currentDuration) ??
+                false;
 
-        nameCorrect = _audioService?.checkNoteName(currentNote.lyric, _lastAnalysisData!.detectedWord) ?? false;
+        nameCorrect = _audioService?.checkNoteName(
+                currentNote.lyric, _lastAnalysisData!.detectedWord) ??
+            false;
       } else {
         // Sistema de pontuação mais realista se não há dados de áudio
         final difficulty = state.exercise.difficultyValue;
-        final baseAccuracy = (10 - difficulty) / 10.0; // Dificuldade 1 = 90%, Dificuldade 10 = 0%
+        final baseAccuracy = (10 - difficulty) /
+            10.0; // Dificuldade 1 = 90%, Dificuldade 10 = 0%
 
         // Simulação mais realista baseada na dificuldade
         pitchCorrect = math.Random().nextDouble() < baseAccuracy;
@@ -429,9 +453,11 @@ class SolfegeExerciseNotifier extends StateNotifier<SolfegeExerciseState> {
           ? currentNote.getFrequencyOctaveDown()
           : currentNote.frequency;
 
-      final expectedDuration = currentNote.getDurationInSeconds(state.exercise.tempo);
+      final expectedDuration =
+          currentNote.getDurationInSeconds(state.exercise.tempo);
       final detectedDuration = _currentNoteStartTime != null
-          ? DateTime.now().difference(_currentNoteStartTime!).inMilliseconds / 1000.0
+          ? DateTime.now().difference(_currentNoteStartTime!).inMilliseconds /
+              1000.0
           : 0.0;
 
       final result = NoteResult.withDetailedAnalysis(
@@ -481,7 +507,8 @@ class SolfegeExerciseNotifier extends StateNotifier<SolfegeExerciseState> {
   }
 
   // FASE 3.3: Aplicar feedback de todas as notas com Verovio
-  Future<void> _applyResultsFeedback(List<SolfegeAnalysisResult> results) async {
+  Future<void> _applyResultsFeedback(
+      List<SolfegeAnalysisResult> results) async {
     try {
       final noteColors = <String, String>{};
 
@@ -492,7 +519,8 @@ class SolfegeExerciseNotifier extends StateNotifier<SolfegeExerciseState> {
       }
 
       await VerovioService.instance.colorMultipleNotes(noteColors);
-      debugPrint('✅ FASE 3.3: Feedback visual aplicado para ${results.length} notas');
+      debugPrint(
+          '✅ FASE 3.3: Feedback visual aplicado para ${results.length} notas');
     } catch (e) {
       debugPrint('❌ FASE 3.3: Erro ao aplicar feedback múltiplas notas: $e');
     }
@@ -502,14 +530,18 @@ class SolfegeExerciseNotifier extends StateNotifier<SolfegeExerciseState> {
   void _fallbackToSimulation() async {
     debugPrint('Usando simulação como fallback');
 
-    for (int i = state.currentNoteIndex; i < state.exercise.noteSequence.length; i++) {
+    for (int i = state.currentNoteIndex;
+        i < state.exercise.noteSequence.length;
+        i++) {
       if (state.state != SolfegeState.listening) break;
       if (!mounted) return;
 
       state = state.copyWith(currentNoteIndex: i);
 
-      final noteDuration = _getNoteDurationInSeconds(state.exercise.noteSequence[i].duration);
-      await Future.delayed(Duration(milliseconds: (noteDuration * 1000).round()));
+      final noteDuration =
+          _getNoteDurationInSeconds(state.exercise.noteSequence[i].duration);
+      await Future.delayed(
+          Duration(milliseconds: (noteDuration * 1000).round()));
     }
 
     if (mounted && state.state == SolfegeState.listening) {
@@ -573,7 +605,8 @@ class SolfegeExerciseNotifier extends StateNotifier<SolfegeExerciseState> {
         : ((correctPitches / state.exercise.noteSequence.length) * 100).round();
     final durationScore = state.exercise.noteSequence.isEmpty
         ? 0
-        : ((correctDurations / state.exercise.noteSequence.length) * 100).round();
+        : ((correctDurations / state.exercise.noteSequence.length) * 100)
+            .round();
 
     final coloredMusicXml =
         _generateMusicXml(exercise: state.exercise, results: results);
@@ -603,7 +636,8 @@ class SolfegeExerciseNotifier extends StateNotifier<SolfegeExerciseState> {
       // Calcular score final baseado em pitch (peso 70%) e duração (peso 30%)
       final finalScore = ((pitchScore * 0.7) + (durationScore * 0.3)).round();
 
-      debugPrint('🎵 Score final: $finalScore% (Pitch: $pitchScore%, Duração: $durationScore%)');
+      debugPrint(
+          '🎵 Score final: $finalScore% (Pitch: $pitchScore%, Duração: $durationScore%)');
 
       // Determinar resultado do exercício
       final scoreResult = SolfegeScoreResultExtension.fromScore(finalScore);
@@ -613,17 +647,15 @@ class SolfegeExerciseNotifier extends StateNotifier<SolfegeExerciseState> {
       final userId = userSession.currentUser?.id;
 
       if (userId == null) {
-        debugPrint('❌ Usuário não está logado - não é possível salvar progresso');
+        debugPrint(
+            '❌ Usuário não está logado - não é possível salvar progresso');
         return;
       }
 
       final exerciseId = int.parse(state.exercise.id);
 
       final updatedProgress = await _databaseService.saveExerciseResult(
-        userId,
-        exerciseId,
-        finalScore
-      );
+          userId, exerciseId, finalScore);
 
       // Aplicar gamificação baseada no resultado
       await _applyGamificationRewards(scoreResult, finalScore);
@@ -632,7 +664,6 @@ class SolfegeExerciseNotifier extends StateNotifier<SolfegeExerciseState> {
       state = state.copyWith(progress: updatedProgress);
 
       debugPrint('🎵 Resultado salvo com sucesso!');
-
     } catch (e) {
       debugPrint('❌ Erro ao salvar resultado: $e');
       // Não rethrow para não quebrar a UI, apenas logar o erro
@@ -640,7 +671,8 @@ class SolfegeExerciseNotifier extends StateNotifier<SolfegeExerciseState> {
   }
 
   // Aplicar recompensas de gamificação baseado no desempenho
-  Future<void> _applyGamificationRewards(SolfegeScoreResult scoreResult, int finalScore) async {
+  Future<void> _applyGamificationRewards(
+      SolfegeScoreResult scoreResult, int finalScore) async {
     try {
       final difficulty = state.exercise.difficultyValue;
 
@@ -648,13 +680,15 @@ class SolfegeExerciseNotifier extends StateNotifier<SolfegeExerciseState> {
         case SolfegeScoreResult.excellent:
           // >= 90% - Ganhar pontos baseado na dificuldade
           final pointsReward = _calculatePointsReward(finalScore, difficulty);
-          ServiceRegistry.get<GamificationService>().addPoints(pointsReward, reason: 'Exercício de solfejo completado');
+          ServiceRegistry.get<GamificationService>().addPoints(pointsReward,
+              reason: 'Exercício de solfejo completado');
           debugPrint('🎉 Exercício completado! +$pointsReward pontos');
           break;
 
         case SolfegeScoreResult.good:
           // 50-89% - Sem penalidade, sem recompensa
-          debugPrint('👍 Bom trabalho! Continue praticando para desbloquear o próximo exercício');
+          debugPrint(
+              '👍 Bom trabalho! Continue praticando para desbloquear o próximo exercício');
           break;
 
         case SolfegeScoreResult.poor:
@@ -663,7 +697,6 @@ class SolfegeExerciseNotifier extends StateNotifier<SolfegeExerciseState> {
           // Implementar sistema de vidas via UserSession quando necessário
           break;
       }
-
     } catch (e) {
       debugPrint('❌ Erro ao aplicar gamificação: $e');
     }
@@ -698,9 +731,11 @@ class SolfegeExerciseNotifier extends StateNotifier<SolfegeExerciseState> {
       if (state.showMetronomeInPreview) {
         final beatDurationMs = (60000 / state.exercise.tempo).round();
         int beatCount = 0;
-        final beatsPerMeasure = int.tryParse(state.exercise.timeSignature.split('/')[0]) ?? 4;
+        final beatsPerMeasure =
+            int.tryParse(state.exercise.timeSignature.split('/')[0]) ?? 4;
 
-        metronomeTimer = Timer.periodic(Duration(milliseconds: beatDurationMs), (timer) {
+        metronomeTimer =
+            Timer.periodic(Duration(milliseconds: beatDurationMs), (timer) {
           if (!state.isPlayingPreview) {
             timer.cancel();
             return;
@@ -715,7 +750,9 @@ class SolfegeExerciseNotifier extends StateNotifier<SolfegeExerciseState> {
 
       // Tocar cada nota da sequência
       for (int i = 0; i < state.exercise.noteSequence.length; i++) {
-        if (!mounted || state.state != SolfegeState.idle || !state.isPlayingPreview) {
+        if (!mounted ||
+            state.state != SolfegeState.idle ||
+            !state.isPlayingPreview) {
           break;
         }
 
@@ -741,7 +778,6 @@ class SolfegeExerciseNotifier extends StateNotifier<SolfegeExerciseState> {
 
       // Parar metrônomo
       metronomeTimer?.cancel();
-
     } catch (e) {
       debugPrint('Erro ao tocar preview: $e');
     }
@@ -772,7 +808,8 @@ class SolfegeExerciseNotifier extends StateNotifier<SolfegeExerciseState> {
         musicXml: musicXml,
       );
 
-      debugPrint('Nomes de solfejo ${newShowNames ? "ativados" : "desativados"}');
+      debugPrint(
+          'Nomes de solfejo ${newShowNames ? "ativados" : "desativados"}');
     }
   }
 
@@ -807,7 +844,8 @@ class SolfegeExerciseNotifier extends StateNotifier<SolfegeExerciseState> {
         musicXml: musicXml,
       );
 
-      debugPrint('🎵 Modo de oitava alterado: ${newExercise.isOctaveDown ? "Grave" : "Agudo"}');
+      debugPrint(
+          '🎵 Modo de oitava alterado: ${newExercise.isOctaveDown ? "Grave" : "Agudo"}');
     }
   }
 
@@ -851,8 +889,10 @@ class SolfegeExerciseNotifier extends StateNotifier<SolfegeExerciseState> {
   // Alternar exibição do metrônomo no preview
   void toggleMetronomeInPreview() {
     if (state.state == SolfegeState.idle) {
-      state = state.copyWith(showMetronomeInPreview: !state.showMetronomeInPreview);
-      debugPrint('🎵 Metrônomo no preview ${state.showMetronomeInPreview ? "ativado" : "desativado"}');
+      state =
+          state.copyWith(showMetronomeInPreview: !state.showMetronomeInPreview);
+      debugPrint(
+          '🎵 Metrônomo no preview ${state.showMetronomeInPreview ? "ativado" : "desativado"}');
     }
   }
 
@@ -907,7 +947,8 @@ class SolfegeExerciseNotifier extends StateNotifier<SolfegeExerciseState> {
         };
 
         // Adicionar letra apenas se showLyrics for true
-        if (showLyrics || exercise.noteSequence.any((n) => n.lyric.isNotEmpty)) {
+        if (showLyrics ||
+            exercise.noteSequence.any((n) => n.lyric.isNotEmpty)) {
           noteData['lyric'] = noteInfo.lyric;
         }
 
@@ -924,11 +965,11 @@ class SolfegeExerciseNotifier extends StateNotifier<SolfegeExerciseState> {
         title: exercise.title,
       );
 
-      debugPrint('✅ FASE 4.6: MusicXML gerado com precisão para solfejo: ${exercise.title}');
+      debugPrint(
+          '✅ FASE 4.6: MusicXML gerado com precisão para solfejo: ${exercise.title}');
       debugPrint('🎵 FASE 4.6: ${noteSequenceData.length} notas processadas');
 
       return musicXML;
-
     } catch (e) {
       debugPrint('❌ FASE 4.6: Erro na geração precisa de MusicXML: $e');
       return ''; // Retorna vazio em caso de erro
