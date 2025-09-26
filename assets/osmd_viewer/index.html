@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Musilingo Score Viewer</title>
+  <style>
+    /* Estilos para garantir que o visualizador ocupe todo o espaço sem margens ou barras de scroll indesejadas */
+    body, html {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden; /* Desativa o scroll */
+      background-color: transparent !important;
+    }
+    #score-container {
+      width: 100%;
+      height: 100%;
+    }
+  </style>
+</head>
+<body>
+  <!-- O contêiner onde a partitura será renderizada -->
+  <div id="score-container"></div>
+
+  <!-- Carrega a biblioteca OSMD primeiro -->
+  <script src="js/opensheetmusicdisplay.min.js"></script>
+  <!-- Carrega o nosso script de controlo depois -->
+  <script src="js/main.js"></script>
+</body>
+</html>

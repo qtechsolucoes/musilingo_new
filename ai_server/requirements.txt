@@ -1,0 +1,12 @@
+# ai_server/requirements.txt
+
+Flask
+Flask-Cors
+requests
+google-generativeai
+python-dotenv
+music21
+soundfile
+librosa
+webrtcvad-wheels
+Pillow

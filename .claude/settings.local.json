@@ -1,0 +1,36 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find:*)",
+      "Bash(flutter analyze:*)",
+      "Read(//c/Users/aless/Downloads/**)",
+      "Bash(dart analyze:*)",
+      "Bash(rg:*)",
+      "Bash(cat:*)",
+      "WebSearch",
+      "WebFetch(domain:www.verovio.org)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:book.verovio.org)",
+      "Bash(flutter create:*)",
+      "Bash(git clone:*)",
+      "Bash(move verovio_flutter.c verovio_flutter.cpp)",
+      "Bash(flutter pub:*)",
+      "Bash(flutter build:*)",
+      "Bash(flutter clean:*)",
+      "Bash(flutter run:*)",
+      "Bash(flutter:*)",
+      "Bash(nc:*)",
+      "Bash(taskkill:*)",
+      "Read(//c/desenvolvimento_musitech/**)",
+      "Bash(copy:*)",
+      "Bash(adb logcat:*)",
+      "Bash(findstr:*)",
+      "Bash(dart:*)",
+      "Bash(adb install:*)",
+      "Bash(adb kill-server:*)",
+      "Bash(adb:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
